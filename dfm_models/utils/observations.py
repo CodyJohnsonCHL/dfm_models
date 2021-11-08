@@ -13,6 +13,7 @@ from urllib.request import urlretrieve
 import pandas as pd
 
 from dfm_models._internal import validate_COOPs_loaded
+from dfm_models.utils.io import download_COOPs
 
 
 class Observations:
@@ -62,6 +63,60 @@ class Observations:
                 )
                 print(request)
                 pass
+
+    def gen_COOPS_observed_water_levels(self, begin_date, end_date, datum="MSL"):
+        """TODO: Docstring for generate_water_level_comp.
+
+        :function: TODO
+        :returns: TODO
+
+        """
+
+        validate_COOPs_loaded(self)
+
+        # differentiate object based on datum
+        if datum == "MSL":
+
+            self.observed_water_levels_MSL = {}
+
+            for station_name, station in self.COOPs.items():
+
+                try:
+                    station.download_observations(datum, begin_date, end_date)
+                    self.observed_water_levels_MSL[
+                        station_name
+                    ] = station.water_level_observations_MSL
+                except HTTPError:
+                    pass
+
+        elif datum == "NAVD":
+
+            self.observed_water_levels_NAVD = {}
+
+            for station_name, station in self.COOPs.items():
+
+                try:
+                    station.download_observations(datum, begin_date, end_date)
+                    self.observed_water_levels_NAVD[
+                        station_name
+                    ] = station.water_level_observations_NAVD
+                except HTTPError:
+                    pass
+
+        elif datum == "LMSL":
+
+            self.observed_water_levels_LMSL = {}
+
+            for station_name, station in self.COOPs.items():
+
+                try:
+                    station.download_observations("MSL", begin_date, end_date)
+                    self.observed_water_levels_LMSL[station_name] = (
+                        station.water_level_observations_MSL
+                        - station.water_level_observations_MSL.mean()
+                    )
+                except HTTPError:
+                    pass
 
     def gen_COOPS_predicted_water_levels(self, begin_date, end_date, datum="MSL"):
         """TODO: Docstring for generate_water_level_comp.
@@ -195,48 +250,44 @@ class COOPs(Station):
         :returns: TODO
 
         """
-        request = (
-            f"https://tidesandcurrents.noaa.gov/api/datagetter?"
-            f"begin_date={begin_date}"
-            f"&end_date={end_date}"
-            f"&station={self.station_id}"
-            f"&product=predictions"
-            f"&datum={datum}"
-            f"&units=metric"
-            f"&time_zone=gmt"
-            f"&application=ERDC"
-            f"&format=csv"
-            f"&interval=h"
+
+        data = download_COOPs(
+            "predictions",
+            self.station_name,
+            self.station_id,
+            datum,
+            begin_date,
+            end_date,
         )
-
-        fn = tmp()
-
-        try:
-            response, http = urlretrieve(request, fn.name)
-        except HTTPError:
-            print(
-                f"{self.station_name} with {self.station_id} was not found in CO-OPs database."
-            )
-            print(f"Check url for errors: {request}")
-            raise
-
-        data = pd.read_csv(
-            fn,
-            index_col=[0],
-            parse_dates=True,
-            names=["time", "water_level"],
-            header=0,
-            usecols=[0, 1],
-            squeeze=True,
-        )
-
-        data.name = "predicted_water_level"
 
         # differentiate object based on datum
         if datum == "MSL":
             self.water_level_prediction_MSL = data
         elif datum == "NAVD":
             self.water_level_prediction_NAVD = data
+
+    def download_observations(self, datum, begin_date, end_date):
+        """download observered water level and append to attribute
+
+        :function: TODO
+        :returns: TODO
+
+        """
+
+        data = download_COOPs(
+            "hourly_height",
+            self.station_name,
+            self.station_id,
+            datum,
+            begin_date,
+            end_date,
+        )
+
+        # differentiate object based on datum
+        if datum == "MSL":
+            self.water_level_observations_MSL = data
+        elif datum == "NAVD":
+            self.water_level_observations_NAVD = data
 
     def download_harcon(self):
         """TODO: Docstring for download_harcon.

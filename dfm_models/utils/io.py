@@ -7,10 +7,14 @@ cody.l.johnson@erdc.dren.mil
 import random
 import string
 from pathlib import Path
+from tempfile import NamedTemporaryFile as tmp
+from urllib.error import HTTPError
+from urllib.request import urlretrieve
 
 import numpy as np
 import pandas as pd
 import xarray as xr
+
 from dfm_models._internal import validate_datetime, validate_variable
 
 
@@ -254,6 +258,51 @@ def download_ocean_ts(lats, lons, t0, tf, variables, download):
     print(f"Successfully downloaded data set to: {tmpDir}")
 
 
+def download_COOPs(product, station_name, station_id, datum, begin_date, end_date):
+    """download predicted water level and append to attribute
+
+    :function: TODO
+    :returns: TODO
+
+    """
+    request = (
+        f"https://tidesandcurrents.noaa.gov/api/datagetter?"
+        f"begin_date={begin_date}"
+        f"&end_date={end_date}"
+        f"&station={station_id}"
+        f"&product={product}"
+        f"&datum={datum}"
+        f"&units=metric"
+        f"&time_zone=gmt"
+        f"&application=ERDC"
+        f"&format=csv"
+        f"&interval=h"
+    )
+
+    fn = tmp()
+
+    try:
+        response, http = urlretrieve(request, fn.name)
+    except HTTPError:
+        print(f"{station_name} with {station_id} was not found in CO-OPs database.")
+        print(f"Check url for errors: {request}")
+        raise
+
+    data = pd.read_csv(
+        fn,
+        index_col=[0],
+        parse_dates=True,
+        names=["time", "water_level"],
+        header=0,
+        usecols=[0, 1],
+        squeeze=True,
+    )
+
+    data.name = f"water_level_{product}"
+
+    return data
+
+
 ###########
 # helpers #
 ###########
@@ -293,4 +342,3 @@ def lat2index(lat, coords):
     lats = coords.lat.values
 
     return np.argmin(np.abs(lats - lat))
-

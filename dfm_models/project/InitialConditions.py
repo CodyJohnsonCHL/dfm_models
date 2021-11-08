@@ -8,7 +8,7 @@ import numpy as np
 from scipy.interpolate import LinearNDInterpolator
 
 
-def interp2mesh(da, mesh_data):
+def interp2mesh(da, mesh_data, mod180=False):
     """Interpolate variabel from Xarray DataArray to grid
 
     :params:
@@ -24,6 +24,10 @@ def interp2mesh(da, mesh_data):
     pv = np.column_stack((xv, yv))
 
     x = da.lon.values
+
+    if mod180:
+        x[x < 0] = x[x < 0] + 360
+
     y = da.lat.values
     X, Y = np.meshgrid(x, y)
     x = X.ravel()
