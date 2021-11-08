@@ -5,6 +5,8 @@ cody.l.johnson@erdc.dren.mil
 """
 
 import pandas as pd
+import pytide
+from numpy import abs, angle
 
 from dfm_models._internal import validate_harcon
 
@@ -70,6 +72,44 @@ def compute_phase_error(res, obs):
         mu = res - obs
         mu += 360
         return mu
+
+
+##########################
+#    tidal harmonic      #
+##########################
+def harmonic_analysis(
+    waterlevel,
+    time,
+    consts=[
+        "K1",
+        "O1",
+        "P1",
+        "M2",
+        "Q1",
+        "S2",
+        "S1",
+        "Mf",
+        "N2",
+        "K2",
+        "J1",
+        "Mm",
+        "M4",
+        "Sa",
+        "Ssa",
+    ],
+):
+    wt = pytide.WaveTable(consts)
+    h = waterlevel.values
+    f, vu = wt.compute_nodal_modulations(time)
+    w = wt.harmonic_analysis(h, f, vu)
+    hp = wt.tide_from_tide_series(time, w)
+    return w, (h, hp, time), consts
+
+
+def get_modulus_angle(w):
+    modulus = abs(w)
+    ang = angle(w, deg=True)
+    return modulus, ang
 
 
 ##########################

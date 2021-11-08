@@ -303,6 +303,67 @@ def download_COOPs(product, station_name, station_id, datum, begin_date, end_dat
     return data
 
 
+def download_nwis(
+    station_name, station_id, begin_date, end_date, data_code=60, skiprows=28
+):
+    """download data from https://nwis.waterdata.usge and outputs as dataframe
+
+    inputs:
+    site_name = user specified name for site
+    site_no = USGS site number code
+    begin_date = first day in timeseries (YYYY-MM-dd)
+    end_date = last day in timeseries (YYYY-MM-dd)
+    skiprows = number of header rows to skip (default=28)
+
+    return = time series (pandas Series)
+    """
+
+    request = (
+        f"https://nwis.waterdata.usgs.gov/usa/nwis/uv/"
+        f"?cb_{data_code:05d}=on"
+        f"&format=rdb&"
+        f"site_no={station_id}"
+        f"&period="
+        f"&begin_date={begin_date}"
+        f"&end_date={end_date}"
+    )
+
+    fn = tmp()
+
+    try:
+        response, http = urlretrieve(request, fn.name)
+    except HTTPError:
+        print(f"{station_name} with {station_id} was not found in CO-OPs database.")
+        print(f"Check url for errors: {request}")
+        raise
+
+    # Pandas
+    data = pd.read_csv(
+        fn,
+        sep="\s+",  # noqa: W605
+        skiprows=skiprows,
+        usecols=[2, 3, 5],
+        parse_dates={"datetime_CST": [0, 1]},
+        header=0,
+        index_col=0,
+        names=["date", "time", "data"],
+        dtype={"data": float},
+    )
+
+    try:
+        data.index = (
+            data.index.tz_localize("America/Chicago", ambiguous=True)
+            .tz_convert("UTC")
+            .tz_localize(None)
+        )
+        data.index = data.index.rename("datetime_UTC")
+    except AttributeError as e:
+        print("Problem converting datetime to UTC. Check data")
+        raise e
+
+    return data
+
+
 ###########
 # helpers #
 ###########
