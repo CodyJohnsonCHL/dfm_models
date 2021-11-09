@@ -348,6 +348,7 @@ def download_nwis(
         index_col=0,
         names=["date", "time", "data"],
         dtype={"data": float},
+        squeeze=True,
     )
 
     try:
@@ -357,9 +358,9 @@ def download_nwis(
             .tz_localize(None)
         )
         data.index = data.index.rename("datetime_UTC")
-    except AttributeError as e:
+    except AttributeError as e:  # noqa: F841
         print("Problem converting datetime to UTC. Check data")
-        raise e
+        return np.nan
 
     return data
 

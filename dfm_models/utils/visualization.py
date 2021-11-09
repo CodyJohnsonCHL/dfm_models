@@ -22,8 +22,10 @@ def spatial_stat(
     vmin=0,
     vmax=30,
     tbuff=-0.05,
+    fig=None,
 ):
-    fig = plt.figure(figsize=(16, 6.5))
+    if fig is None:
+        fig = plt.figure(figsize=(16, 6.5))
     ax = plt.axes(projection=ccrs.PlateCarree())
     ax.set_extent(extent, ccrs.PlateCarree())
     ax.coastlines(resolution="10m", color="black", linewidth=1)
@@ -55,7 +57,7 @@ def spatial_stat(
     return fig, ax, cbar
 
 
-def one2one(obs, mod, quantity_str="water level [m, NAVD88]", lims=None, ax=None):
+def one2one(obs, mod, quantity_str="water level [m, MSL]", lims=None, ax=None):
     std = obs.std()
     std_shift = np.sin(np.pi / 4) * std
 
