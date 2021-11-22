@@ -4,57 +4,79 @@ cody.l.johnson@erdc.dren.mil
 
 """
 
-import cartopy.crs as ccrs
+import geoviews as gv
+import geoviews.feature as gf
+import geoviews.tile_sources as gts
 import holoviews as hv
 import matplotlib.pyplot as plt
 import numpy as np
+from bokeh.models import HoverTool
+from geoviews import opts
 
 
-def spatial_stat(
-    xs,
-    ys,
-    stat,
-    labels,
-    extent=[-93.5, -87, 28, 31],
-    quantity_str="normalized rmse [% tidal range]",
-    s=80,
-    cmap="turbo",
-    vmin=0,
-    vmax=30,
-    tbuff=-0.05,
-    fig=None,
-):
-    if fig is None:
-        fig = plt.figure(figsize=(16, 6.5))
-    ax = plt.axes(projection=ccrs.PlateCarree())
-    ax.set_extent(extent, ccrs.PlateCarree())
-    ax.coastlines(resolution="10m", color="black", linewidth=1)
-    im = ax.scatter(
-        xs,
-        ys,
-        s=s,
-        c=stat,
-        transform=ccrs.PlateCarree(),
-        zorder=10,
-        cmap=cmap,
-        vmin=vmin,
-        vmax=vmax,
-    )
+def spatial_stat(stats, fn):
+    # data
+    lon = hv.Dimension("lon", label="Longitude [deg]")
+    lat = hv.Dimension("lat", label="Latitude [deg]")
+    hv_stats = hv.Table(stats, kdims=[lon, lat])
+    cols = stats.columns[2:-2].values
+    clabels = {
+        "nrmse": "normalized RMSE [% range]",
+        "nrmse_tide": "normalized RMSE [% tidal range]",
+        "rmse_cm": "RMSE [cm]",
+        "r2": "r-squared [.]",
+    }
 
-    for x, y, l in zip(xs, ys, labels):
-        ax.text(
-            x=x + tbuff,
-            y=y + tbuff,
-            s=l,
-            horizontalalignment="right",
-            transform=ccrs.PlateCarree(),
-            zorder=101,
+    # hover tool
+    tooltips = [
+        ("Station", "@station"),
+        ("# obs.", "@number"),
+        ("Normalized RMSE [% range]", "@nrmse"),
+        ("Normalized RMSE [% tidal range]", "@nrmse_tide"),
+        ("RMSE [cm]", "@rmse_cm"),
+        ("r-squared", "@r2"),
+    ]
+    hover = HoverTool(tooltips=tooltips)
+
+    # style
+    psize = 10
+    cst_lw = 1.25
+
+    # Holoviews options
+    cOpts = opts.LineContours(line_width=cst_lw)
+    overOpts = opts.Overlay(aspect=6.5 / 3, responsive=True)
+
+    # generate holomap
+    holomap = hv.HoloMap(kdims="Statistic")
+    for col in cols:
+
+        clabel = clabels[col]  # colorbar text label
+
+        # options for points
+        pOpts = opts.Points(
+            size=psize,
+            color=col,
+            cmap="turbo",
+            colorbar=True,
+            clabel=clabel,
+            tools=[hover],
+            clim=(0, hv_stats[col].max()),
         )
 
-    cbar = plt.colorbar(im)
-    cbar.set_label(quantity_str)
+        # put together
+        overlay = (
+            gf.coastline(scale="10m").opts(cOpts)
+            * gv.Points(hv_stats).opts(pOpts)
+            * gts.EsriImagery
+        )
 
-    return fig, ax, cbar
+        # map
+        holomap[col] = overlay.opts(overOpts)
+
+    # save output
+    gv.save(holomap, fn)
+
+    return holomap
 
 
 def one2one(obs, mod, quantity_str="water level [m, MSL]", lims=None, ax=None):
