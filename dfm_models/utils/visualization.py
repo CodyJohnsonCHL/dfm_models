@@ -135,7 +135,6 @@ def water_level_holomap(water_levels, label):
 
     """
     kdims = hv.Dimension("station")
-
     curves = {
         station: hv.Curve(wl, group=label, label=label)
         for station, wl in water_levels.items()
