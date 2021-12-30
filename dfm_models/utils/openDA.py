@@ -7,7 +7,7 @@ cody.l.johnson@erdc.dren.mil
 from datetime import datetime as dt
 
 
-def writeNoosTs(data, Location, x, y, Unit, fn):
+def writeNoosTs(data, Location, x, y, Unit, stdev, fn):
     """write time series data in OpenDA ExchangeObject format (NOOS)
 
     data = pd.Series with datatime axis and value
@@ -16,15 +16,15 @@ def writeNoosTs(data, Location, x, y, Unit, fn):
     now = dt.now().strftime("%Y-%m-%d %H:%M")
 
     with open(fn, "w") as f:
-        f.write(f"#======================================================\n")
+        f.write("#======================================================\n")
         f.write(f"# Generated on {now} \n")
-        f.write(f"#======================================================\n")
+        f.write("#======================================================\n")
         f.write(f"# Location    : {Location}\n")
         f.write(f"# Position    : ({x:.05f},{y:.05f})\n")
-        f.write(f"# Source      : observed\n")
+        f.write("# Source      : observed\n")
         f.write(f"# Unit        : {Unit}\n")
-        f.write(f"# Analyse time: null\n")
-        f.write(f"# Timezone    : GMT\n")
+        f.write("# Analyse time: null\n")
+        f.write(f"standarddeviation  = {stdev:.02f}\n")
         f.write("#======================================================\n")
 
         for time, value in data.iteritems():
@@ -32,7 +32,7 @@ def writeNoosTs(data, Location, x, y, Unit, fn):
             f.write(f"{strftime}\t{value}\n")
 
 
-def createNoosConfigFile(stdev, stationNames, fn):
+def createNoosConfigFile(stdevs, stationNames, fn):
 
     with open(fn, "w") as f:
         f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
@@ -41,7 +41,7 @@ def createNoosConfigFile(stdev, stationNames, fn):
         )
         f.write("\n")
 
-        for stationName in stationNames:
+        for stdev, stationName in zip(stdevs, stationNames):
             writeNoosObserver(f, stdev, stationName)
 
         f.write("\n")
@@ -49,6 +49,6 @@ def createNoosConfigFile(stdev, stationNames, fn):
 
 
 def writeNoosObserver(f, stdev, noosFn):
-    f.write(f'\t<timeSeries status="status" standardDeviation="{stdev:.02f}">\n')
+    f.write(f'\t<timeSeries status="use" standardDeviation="{stdev:.02f}">\n')
     f.write(f"\t\t{noosFn}\n")
     f.write(f"\t</timeSeries>\n")
