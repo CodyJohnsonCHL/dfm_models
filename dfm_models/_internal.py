@@ -85,3 +85,12 @@ def validate_variable(variables):
     if not set(variables) <= set(valid_vars):
 
         raise TypeError(f"{variables} should be a subset of {valid_vars}")
+
+
+def validate_cmems_variable(variables):
+    valid_vars = ["zos", "uo", "vo", "so", "thetao"]
+
+    if not set(variables) <= set(valid_vars):
+
+        raise TypeError(f"{variables} should be a subset of {valid_vars}")
+

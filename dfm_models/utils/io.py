@@ -4,8 +4,6 @@ cody.l.johnson@erdc.dren.mil
 
 """
 
-import random
-import string
 from pathlib import Path
 from tempfile import NamedTemporaryFile as tmp
 from urllib.error import HTTPError
@@ -14,8 +12,13 @@ from urllib.request import urlretrieve
 import numpy as np
 import pandas as pd
 import xarray as xr
+from pydap.cas.get_cookies import setup_session
 
-from dfm_models._internal import validate_datetime, validate_variable
+from dfm_models._internal import (
+    validate_cmems_variable,
+    validate_datetime,
+    validate_variable,
+)
 
 
 def download_ncoda(lats, lons, t0, tf, variables, region=1, fn=None):
@@ -35,8 +38,7 @@ def download_ncoda(lats, lons, t0, tf, variables, region=1, fn=None):
 
     validate_datetime(t0)
     validate_datetime(tf)
-
-    request = "https://tds.hycom.org/thredds/dodsC/GLBy0.08/expt_93.0/ssh?lat[0:1:4250],lon[0:1:4499]"
+    _variables, surf_el = fix_surf_el(variables)
 
     # query dataset to get coordinates and convert bbox to indicies for OpenDAP
     coords = xr.open_dataset(request)
@@ -234,6 +236,8 @@ def download_ocean_ts(lats, lons, t0, tf, variables, download):
         Xarray Dataset of selected variables
     """
 
+    datasets = []
+
     tmpDir = Path("/tmp") / "".join(
         random.choices(string.ascii_letters + string.digits, k=10)
     )
@@ -249,13 +253,16 @@ def download_ocean_ts(lats, lons, t0, tf, variables, download):
         fn = tmpDir / datetime.strftime("%Y%m%d.%H%M.nc")
 
         try:
-            download(lats, lons, datetime, variables, fn=fn)
+            ds = download(lats, lons, datetime, variables, fn=fn)
+            datasets.append(ds)
 
         except OSError:
             print(f"Skipping timestep {datetime} because URL was not found.")
             continue
 
     print(f"Successfully downloaded data set to: {tmpDir}")
+
+    return xr.concat(datasets, "time")
 
 
 def download_COOPs(product, station_name, station_id, datum, begin_date, end_date):
@@ -365,6 +372,76 @@ def download_nwis(
     return data
 
 
+def download_cmems_ts(lats, lons, t0, tf, variables, fn=None):
+    """Subset CMEMS output using OpenDAP
+
+    :params:
+        lats = [south, north] limits of bbox
+        lons = [west, east] limits of bbox
+        t0 = datetime for start of time series
+        tf = datetime for end of time series
+        variables = list of variables in ["zos", "uo", "vo", "so", "thetao"]
+
+    :returns:
+        Xarray Dataset of selected variables
+    """
+
+    validate_datetime(t0)
+    validate_datetime(tf)
+
+    try:
+        validate_cmems_variable(variables)
+    except NameError:
+        raise NameError("Input 'variable' needs to be specified")
+
+    _variables, zos = fix_zos(variables)
+
+    request = (
+        "https://my.cmems-du.eu/thredds/dodsC/cmems_mod_glo_phy_my_0.083_P1D-m?"
+        "longitude[0:1:4319],latitude[0:1:2040],depth[0:1:49],time[0:1:10012]"
+    )
+
+    # query dataset to get coordinates and convert bbox to indicies for OpenDAP
+    coords = xr.open_dataset(request)
+    lon_ll = cmemslon2index(lons[0], coords)  # lower left longtiude of bbox
+    lon_ur = cmemslon2index(lons[1], coords)
+    lat_ll = cmemslat2index(lats[0], coords)
+    lat_ur = cmemslat2index(lats[1], coords)
+    t0i = time2index(t0, coords)
+    tfi = time2index(tf, coords)
+
+    request = (
+        f"https://my.cmems-du.eu/thredds/dodsC/cmems_mod_glo_phy_my_0.083_P1D-m?"
+        f"longitude[{lon_ll}:1:{lon_ur}],latitude[{lat_ll}:1:{lat_ur}],depth[0:1:49],time[{t0i}:1:{tfi}],"
+    )
+
+    request = request + "".join(
+        [
+            f"{variable}[{t0i}:1:{tfi}][0:1:49][{lat_ll}:1:{lat_ur}][{lon_ll}:1:{lon_ur}]"
+            for variable in _variables
+        ]
+    )
+
+    # append surf_el if present
+    if zos is not None:
+        request = (
+            request + f"{zos}[{t0i}:1:{tfi}][{lat_ll}:1:{lat_ur}][{lon_ll}:1:{lon_ur}]"
+        )
+
+    ds = xr.open_dataset(request)
+
+    if fn is not None:
+        ds.to_netcdf(fn)
+
+    return ds
+
+
+def copernicusmarine_session(username, password):
+    cas_url = "https://cmems-cas.cls.fr/cas/login"
+    session = setup_session(cas_url, username, password)
+    session.cookies.set("CASTGC", session.cookies.get_dict()["CASTGC"])
+
+
 ###########
 # helpers #
 ###########
@@ -384,10 +461,27 @@ def fix_surf_el(variables):
         return variables, None
 
 
+def fix_zos(variables):
+    """change variables if surf_el is contained"""
+
+    if "zos" in set(variables):
+
+        _variables = variables.copy()
+
+        _variables.remove("zos")
+
+        return _variables, "zos"
+
+    else:
+
+        return variables, None
+
+
 def time2index(t, coords):
     """convert time to index for OpenDAP request"""
-    time = coords.time.values
-    return np.argmin(np.abs())
+    validate_datetime(t)
+    time = pd.to_datetime(coords.time.values)
+    return np.argmin(np.abs(t - time))
 
 
 def lon2index(lon, coords, corr=True):
@@ -401,6 +495,20 @@ def lon2index(lon, coords, corr=True):
 
 def lat2index(lat, coords):
     """convert latitude to index for OpenDAP request"""
+
     lats = coords.lat.values
 
+    return np.argmin(np.abs(lats - lat))
+
+
+def cmemslon2index(lon, coords):
+    """convert longitude to index for OpenDAP request"""
+    lons = coords.longitude.values
+    return np.argmin(np.abs(lons - lon))
+
+
+def cmemslat2index(lat, coords):
+    """convert latitude to index for OpenDAP request"""
+
+    lats = coords.latitude.values
     return np.argmin(np.abs(lats - lat))
